@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
   postgres_db:
     image: postgres:15-alpine
     container_name: trading_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: trading_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -24,8 +22,45 @@ services:
       - ./data_ingestion:/app
     environment:
       - PYTHONUNBUFFERED=1
-      # Pasamos las credenciales como variables de entorno al script de Python
-      - DB_URL=postgresql://admin:adminpassword@postgres_db:5432/trading_db
+      - DB_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+
+  math_engine:
+    build: ./math_engine
+    container_name: trading_math
+    restart: unless-stopped
+    depends_on:
+      - postgres_db
+    environment:
+      - DB_URL=jdbc:postgresql://postgres_db:5432/${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+
+  ai_sentiment:
+    build: ./ai_sentiment
+    container_name: trading_ai
+    restart: unless-stopped
+    depends_on:
+      - postgres_db
+      - data_ingestion
+    volumes:
+      - ./ai_sentiment:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+  decision_engine:
+    build: ./decision_engine
+    container_name: trading_decision
+    restart: unless-stopped
+    depends_on:
+      - postgres_db
+      - math_engine
+      - ai_sentiment
+    environment:
+      - DB_URL=jdbc:postgresql://postgres_db:5432/${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
 
 volumes:
   pgdata:
